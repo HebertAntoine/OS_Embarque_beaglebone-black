@@ -3,11 +3,15 @@
 # ---------------------------------------------------------
 
 # Sur la BeagleBone
+```bash 
 uname -r
+```
 # Exemple : 4.19.94-ti-r42
 
 # Vérifier la présence des headers
+```bash 
 ls -l /lib/modules/$(uname -r)/build
+```
 # (Sur Debian BBB, il n'existe pas → il faut les installer)
 
 # Télécharger manuellement le .deb (depuis un PC avec internet)
@@ -15,13 +19,19 @@ ls -l /lib/modules/$(uname -r)/build
 # linux-headers-4.19.94-ti-r42_1stretch_armhf.deb
 
 # Copier ce fichier vers la BBB
+```bash 
 scp linux-headers-4.19.94-ti-r42_1stretch_armhf.deb debian@192.168.6.2:/home/debian/
+```
 
 # Sur la BeagleBone : installation des headers
+```bash 
 sudo dpkg -i linux-headers-4.19.94-ti-r42_1stretch_armhf.deb
+```
 
 # Vérifier que le kernel est maintenant accessible :
+```bash 
 ls -l /lib/modules/4.19.94-ti-r42/build
+```
 # Doit afficher un lien -> /usr/src/linux-headers-4.19.94-ti-r42
 
 # ---------------------------------------------------------
@@ -29,10 +39,14 @@ ls -l /lib/modules/4.19.94-ti-r42/build
 # ---------------------------------------------------------
 
 # Sur le Mac : récupérer les headers pour le Docker
+```bash 
 scp -r debian@192.168.6.2:/usr/src/linux-headers-4.19.94-ti-r42 ~/bbb-kernel/
+```
 
 # Vérification (Mac)
+```bash 
 ls ~/bbb-kernel
+```
 # -> doit contenir include/, scripts/, Makefile, etc.
 
 
@@ -40,30 +54,38 @@ ls ~/bbb-kernel
 #   3. LANCER DOCKER POUR CROSS-COMPILE LE MODULE .KO
 # ---------------------------------------------------------
 
+```bash 
 docker run --rm -it \
   -v "$(pwd)":/src \
   -v "$(pwd)/kernel_headers/usr/src/linux-headers-4.19.94-ti-r42":/kernel \
   arm32v7/debian:bookworm bash
+```
 
 
 # ---------------------------------------------------------
 #   4. INSTALLER GCC / MAKE DANS LE CONTENEUR
 # ---------------------------------------------------------
+```bash 
 apt update
 apt install -y build-essential gcc make
+```
 
 
 # ---------------------------------------------------------
 #   5. COMPILER LE MODULE NOYAU
 # ---------------------------------------------------------
+```bash 
 cd /src
 make
+```
 
 
 # ---------------------------------------------------------
 #   6. QUITTER DOCKER
 # ---------------------------------------------------------
+```bash 
 exit
+```
 
 
 
@@ -71,7 +93,9 @@ exit
 #   7. TRANSFÉRER LE MODULE COMPILÉ SUR LA BBB
 # ---------------------------------------------------------
 
+```bash 
 scp gpio_pwm_combined.ko debian@192.168.6.2:/home/debian/
+```
 
 
 
@@ -79,20 +103,26 @@ scp gpio_pwm_combined.ko debian@192.168.6.2:/home/debian/
 #   8. INSÉRER LE MODULE DANS LE NOYAU (TEST)
 # ---------------------------------------------------------
 
+```bash 
 ssh debian@192.168.6.2
 sudo insmod gpio_pwm_combined.ko
+```
 
 # Vérifier
+```bash 
 dmesg | tail -30
+```
 
 
 # ---------------------------------------------------------
 #   9. COPIER LES MODULES .KO DANS L’ARBORESCENCE DU NOYAU
 # ---------------------------------------------------------
 
+```bash 
 sudo mkdir -p /lib/modules/$(uname -r)/extra
 sudo cp gpio_blink.ko pwm_kernel.ko /lib/modules/$(uname -r)/extra/
 sudo depmod -a
+```
 
 
 # ---------------------------------------------------------
@@ -100,23 +130,31 @@ sudo depmod -a
 #      LES MODULES AUTOMATIQUEMENT AU BOOT
 # ---------------------------------------------------------
 
+```bash 
 echo "gpio_blink"   | sudo tee /etc/modules-load.d/gpio_pwm.conf
 echo "pwm_kernel"   | sudo tee -a /etc/modules-load.d/gpio_pwm.conf
+```
 
 
 # ---------------------------------------------------------
 #   11. REDÉMARRER POUR TESTER LE CHARGEMENT AUTOMATIQUE
 # ---------------------------------------------------------
 
+```bash 
 sudo reboot
+```
 
 
 # ---------------------------------------------------------
 #   12. VÉRIFIER APRÈS REBOOT QUE LES MODULES SONT CHARGÉS
 # ---------------------------------------------------------
 
+```bash 
 lsmod | grep gpio
 lsmod | grep pwm
 
 dmesg | grep gpio_blink
 dmesg | grep pwm_kernel
+```
+
+![alt text](SCR01.PNG)
