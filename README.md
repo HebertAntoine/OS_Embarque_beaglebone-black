@@ -158,3 +158,13 @@ dmesg | grep pwm_kernel
 ```
 
 ![alt text](SCR01.PNG)
+
+#  Temps total de boot (kernel + user space)
+```bash 
+systemd-analyze
+```
+
+#  Temps de chaque service
+```bash 
+systemd-analyze blame
+```
