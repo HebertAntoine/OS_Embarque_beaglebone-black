@@ -1,0 +1,248 @@
+# README — Cross-compilation & Kernel Module pour GPIO sur BeagleBone Black (BBB)
+
+Ce document résume **toutes les étapes** effectuées dans la conversation précédente,  
+sous forme **100% code**, y compris les explications, commentaires, étapes, et commandes.
+
+---
+
+# ============================================
+# 1️⃣ PRÉREQUIS ET OBJECTIF
+# ============================================
+
+# Objectif :
+# - Compiler sur un PC (Mac) un *module noyau* (.ko)
+# - Ce module allume/éteint des GPIO de la BeagleBone Black
+# - Cross-compiler en utilisant Docker + toolchain ARM
+# - Charger le module sur la BBB et l'exécuter
+
+# On n’utilise *que des GPIO* (puisque PWM n’était pas possible via module).
+# Les GPIO utilisés = P8_10 (GPIO68), P8_8 (GPIO67), P8_9 (GPIO69), P8_26 (GPIO61)
+
+---
+
+# ============================================
+# 2️⃣ RÉCUPÉRATION DES HEADERS DU NOYAU SUR BBB
+# ============================================
+
+# Sur la BBB (SSH)
+uname -r
+# Exemple : 4.19.94-ti-r42
+
+# Vérifier si les headers existent déjà :
+ls -l /lib/modules/$(uname -r)/build
+
+# Si build n’existe PAS (ton cas) :
+# Télécharger directement le .deb des headers :
+# (tu l'avais téléchargé via ton Mac puis transféré)
+
+sudo dpkg -i linux-headers-4.19.94-ti-r42_1stretch_armhf.deb
+
+# Vérifier l'installation :
+ls -l /usr/src/linux-headers-4.19.94-ti-r42
+
+# Et vérifier le lien vers /lib/modules :
+ls -l /lib/modules/4.19.94-ti-r42/build
+
+# Maintenant build → headers OK ✔️
+
+---
+
+# ============================================
+# 3️⃣ COPIER LES HEADERS SUR LE MAC
+# ============================================
+
+# Sur le Mac : créer dossier
+mkdir ~/bbb-module/kernel_headers
+
+# Copier les headers depuis la BBB :
+scp -r debian@192.168.6.2:/usr/src/linux-headers-4.19.94-ti-r42 ~/bbb-module/kernel_headers/usr/src/
+
+# Résultat attendu :
+# ~/bbb-module/kernel_headers/usr/src/linux-headers-4.19.94-ti-r42
+
+---
+
+# ============================================
+# 4️⃣ PRÉPARATION DU PROJET (MAC)
+# ============================================
+
+# Arborescence du dossier :
+# bbb-module/
+#   ├── Makefile
+#   ├── full_ctrl.c
+#   ├── kernel_headers/
+#        └── usr/src/linux-headers-4.19.94-ti-r42/
+
+---
+
+# ============================================
+# 5️⃣ FICHIER Makefile
+# ============================================
+
+cat > Makefile << 'EOF'
+obj-m += full_ctrl.o
+
+PWD := $(shell pwd)
+KDIR := $(PWD)/kernel_headers/usr/src/linux-headers-4.19.94-ti-r42
+
+all:
+	make -C $(KDIR) M=$(PWD) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- modules
+
+clean:
+	make -C $(KDIR) M=$(PWD) clean
+EOF
+
+---
+
+# ============================================
+# 6️⃣ MODULE C (GPIO BLINK 1 Hz)
+# ============================================
+
+cat > full_ctrl.c << 'EOF'
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/gpio.h>
+#include <linux/delay.h>
+#include <linux/kthread.h>
+
+static int gpios[4] = {68, 67, 69, 61};
+static struct task_struct *blink_thread;
+
+// Thread qui clignote les 4 GPIO
+static int blink_func(void *data)
+{
+    while (!kthread_should_stop()) {
+        int i;
+        for (i = 0; i < 4; i++)
+            gpio_set_value(gpios[i], 1);
+        msleep(1000);
+
+        for (i = 0; i < 4; i++)
+            gpio_set_value(gpios[i], 0);
+        msleep(1000);
+    }
+    return 0;
+}
+
+static int __init full_init(void)
+{
+    int i;
+    printk(KERN_INFO "full_ctrl: init\n");
+
+    for (i = 0; i < 4; i++) {
+        gpio_request(gpios[i], "fullctrl_gpio");
+        gpio_direction_output(gpios[i], 0);
+    }
+
+    blink_thread = kthread_run(blink_func, NULL, "blink_thread");
+    printk(KERN_INFO "full_ctrl: thread started\n");
+
+    return 0;
+}
+
+static void __exit full_exit(void)
+{
+    int i;
+
+    printk(KERN_INFO "full_ctrl: stopping\n");
+
+    if (blink_thread)
+        kthread_stop(blink_thread);
+
+    for (i = 0; i < 4; i++) {
+        gpio_set_value(gpios[i], 0);
+        gpio_free(gpios[i]);
+    }
+
+    printk(KERN_INFO "full_ctrl: exit complete\n");
+}
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Antoine");
+MODULE_DESCRIPTION("Blink 4 GPIO each second BBB");
+module_init(full_init);
+module_exit(full_exit);
+EOF
+
+---
+
+# ============================================
+# 7️⃣ BUILD AVEC DOCKER SUR MAC
+# ============================================
+
+cd ~/bbb-module
+
+docker run --rm -it \
+  -v "$(pwd)":/src \
+  -v "$(pwd)/kernel_headers/usr/src/linux-headers-4.19.94-ti-r42":/kernel \
+  arm32v7/debian:bookworm bash
+
+# Dans le container :
+apt update
+apt install -y build-essential gcc make
+
+cd /src
+make
+
+# Résultat attendu :
+#   full_ctrl.ko généré ✔️
+
+exit
+
+---
+
+# ============================================
+# 8️⃣ TRANSFERT DU MODULE SUR LA BBB
+# ============================================
+
+scp full_ctrl.ko debian@192.168.6.2:~
+
+---
+
+# ============================================
+# 9️⃣ CHARGER LE MODULE SUR LA BBB
+# ============================================
+
+ssh debian@192.168.6.2
+
+sudo insmod full_ctrl.ko
+
+# Vérifier dans dmesg :
+dmesg | tail
+
+# Doit afficher :
+# full_ctrl: init
+# full_ctrl: thread started
+
+---
+
+# ============================================
+# 🔟 ARRÊTER LE MODULE
+# ============================================
+
+sudo rmmod full_ctrl
+
+# Vérifier :
+dmesg | tail
+# => full_ctrl: stopping
+# => full_ctrl: exit complete
+
+---
+
+# ============================================
+# 🔥 FONCTIONNEMENT FINAL
+# ============================================
+
+# Une fois insmod exécuté :
+# → Les 4 GPIO (P8_10, P8_8, P8_9, P8_26)
+#   clignotent automatiquement :
+#       1 seconde ON
+#       1 seconde OFF
+#       en boucle
+# → Le tout fait par un thread noyau (kthread) dans le module
+
+# Aucun script externe nécessaire.
+# Aucun config-pin nécessaire.
+# Le module pilote directement les GPIO.
+
+---
