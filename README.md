@@ -1,4 +1,71 @@
 # ---------------------------------------------------------
+#   INTRODUCTION
+# ---------------------------------------------------------
+
+Ce projet montre comment :
+
+✔️ Accéder aux **GPIO** et **PWM** de la BeagleBone Black  
+✔️ À partir d’un **module noyau Linux (.ko)**  
+✔️ En utilisant un **cross-compilateur dans Docker**  
+✔️ Et en **chargeant automatiquement les modules au boot**  
+
+Deux modules sont générés :
+
+- `gpio_blink.ko` → fait clignoter **4 GPIO** (1 Hz)
+- `pwm_kernel.ko` → génère **4 PWM logiciels** (50 Hz / 50 %)
+
+L’objectif demandé dans le cours est rempli :
+
+> **« Très Bien : capable de cross-compiler un module noyau qui accède aux GPIO / PWM »**
+
+Ce README contient :
+
+- Les broches utilisées  
+- Le pinout  
+- Le tutoriel cross-compile complet  
+- Les commandes pour charger les modules au démarrage  
+- Les commandes pour mesurer le temps de boot  
+
+---
+
+# ---------------------------------------------------------
+#   BROCHES UTILISÉES (GPIO + PWM)
+# ---------------------------------------------------------
+
+## 🟩 GPIO utilisés par le module `gpio_blink.ko`
+
+| Fonction               | Broche BBB | Nom TI (bank + numéro) | GPIO Linux |
+|-----------------------|------------|-------------------------|------------|
+| GPIO Blink #1         | P8_10      | GPIO2_4                 | **68**     |
+| GPIO Blink #2         | P8_8       | GPIO2_3                 | **67**     |
+| GPIO Blink #3         | P8_9       | GPIO2_5                 | **69**     |
+| GPIO Blink #4         | P8_26      | GPIO1_29                | **61**     |
+
+🔎 Conversion :  
+`GPIO(bank, number) = bank * 32 + number`
+
+---
+
+## 🟦 PWM utilisés par le module `pwm_kernel.ko`
+
+| Fonction PWM           | Broche BBB | Périphérique interne | Chip / Index |
+|------------------------|------------|-----------------------|--------------|
+| PWM #1                 | P9_14      | ehrpwm1A              | pwmchip4/0   |
+| PWM #2                 | P9_16      | ehrpwm1B              | pwmchip4/1   |
+| PWM #3                 | P9_21      | ehrpwm0A              | pwmchip0/0   |
+| PWM #4                 | P9_22      | ehrpwm0B              | pwmchip0/1   |
+
+---
+
+## 🖼️ PINOUT BEAGLEBONE BLACK (Référence)
+
+![BeagleBone Black Pinout](https://raw.githubusercontent.com/mwelling/bbb-pinout/master/images/BBB_Pinout.png)
+
+![alt text](BeagleBone_Black_Pinout.png.webp)
+
+---
+
+# ---------------------------------------------------------
 #   1. RÉCUPÉRER LE NIVEAU DU NOYAU DE LA BBB   
 # ---------------------------------------------------------
 
