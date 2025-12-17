@@ -1,0 +1,2 @@
+/src/kirq.o
+
